@@ -1,0 +1,36 @@
+var weather_icons = {
+    0: "wi-day-sunny",
+    1: "wi-day-sunny-overcast",
+    2: "wi-day-cloudy",
+    3: "wi-cloudy",
+    45: "wi-fog",
+    48: "wi-day-fog",
+    51: "wi-sleet",
+    53: "wi-sleet",
+    55: "wi-sleet",
+    56: "wi-rain-mix",
+    57: "wi-rain-mix",
+    61: "wi-showers",
+    63: "wi-showers",
+    65: "wi-rain",
+    66: "wi-rain-mix",
+    67: "wi-rain-mix",
+    71: "wi-snow",
+    73: "wi-snow",
+    75: "wi-snow",
+    77: "wi-snow",
+    80: "wi-rain",
+    81: "wi-rain",
+    82: "wi-rain",
+    // TEMP BACKUP FOR 80, 81, 82
+    // 80: "wi-showers",
+    // 81: "wi-showers",
+    // 82: "wi-showers",
+    85: "wi-snow",
+    86: "wi-snow",
+    95: "wi-storm-showers",
+    96: "wi-thunderstorm",
+    99: "wi-thunderstorm"
+}
+
+module.exports = weather_icons
