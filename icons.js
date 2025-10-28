@@ -22,10 +22,6 @@ var weather_icons = {
     80: "wi-rain",
     81: "wi-rain",
     82: "wi-rain",
-    // TEMP BACKUP FOR 80, 81, 82
-    // 80: "wi-showers",
-    // 81: "wi-showers",
-    // 82: "wi-showers",
     85: "wi-snow",
     86: "wi-snow",
     95: "wi-storm-showers",
