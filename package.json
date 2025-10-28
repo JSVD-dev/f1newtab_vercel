@@ -17,9 +17,11 @@
   },
   "homepage": "https://github.com/JorisvD01/F1-newtab-backend#readme",
   "dependencies": {
+    "@upstash/redis": "^1.35.6",
     "axios": "^1.12.2",
     "cache-express": "^1.0.2",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0"
   }
