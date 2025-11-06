@@ -326,7 +326,7 @@ app.get("/drivers", Cache(10 * 60 * 1000), async (req, res) => {
     res.status(200).json(responseobj)
 })
 
-cached_constructors_data = {
+placeholder_constructors_data = {
     round: 0,
     labels: ["Data loading...", "Data loading...", "Data loading..."],
     datasets: [
@@ -347,6 +347,17 @@ cached_constructors_data = {
 
 //30 mins cache for constructor graph data
 app.get("/constructors/graph-data", Cache(30 * 60 * 1000), async (req, res) => {
+    var key = `storage:/constructors_graph_data`;
+    const cached = await redis.get(key);
+    
+    if (cached) {
+        res.json(cached);
+        var current_round = cached.round;
+    } else {
+        res.json(placeholder_constructors_data);
+        var current_round = 0;
+    }
+    
     var year = new Date().getFullYear()
     if (yearoverwrite) {year = yearoverwrite}
     var response = await axios.get(`${F1apiURL}/${year}/last`);
@@ -356,13 +367,9 @@ app.get("/constructors/graph-data", Cache(30 * 60 * 1000), async (req, res) => {
         var response = await axios.get(`${F1apiURL}/${year}/last`);
     }
 
-    if (cached_constructors_data.round == response.data.MRData.RaceTable.round) {
-        console.log("Returning cached constructor graph data")
-        return res.status(200).json(cached_constructors_data)
-    } else {
-        console.log("Updating constructor graph data cache")
-        update_constructors_graph_data(response.data.MRData.RaceTable.round, year);
-        return res.status(200).json(cached_constructors_data)
+    if (current_round != response.data.MRData.RaceTable.round) {
+        var updated_data = await update_constructors_graph_data(response.data.MRData.RaceTable.round, year);
+        await redis.set(key, updated_data);
     }
 })
 
@@ -396,11 +403,10 @@ async function update_constructors_graph_data(rounds, year) {
 
         await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    cached_constructors_data = responseobj;
-    return;
+    return responseobj;
 }
 
-cached_drivers_data = {
+placeholder_drivers_data = {
     round: 0,
     labels: ["Data loading...", "Data loading...", "Data loading..."],
     datasets: [
@@ -420,7 +426,20 @@ cached_drivers_data = {
 }
 
 //30 mins cache for driver graph data
-app.get("/drivers/graph-data", Cache(30 * 60 * 1000), async (req, res) => {
+app.get("/drivers/graph-data", Cache(0.5 * 60 * 1000), async (req, res) => {
+    console.log("Running function")
+    
+    var key = `storage:/drivers_graph_data`;
+    const cached = await redis.get(key);
+
+    if (cached) {
+        res.json(cached);
+        var current_round = cached.round;
+    } else {
+        res.json(placeholder_drivers_data);
+        var current_round = 0;
+    }
+    
     var year = new Date().getFullYear()
     if (yearoverwrite) {year = yearoverwrite}
     var response = await axios.get(`${F1apiURL}/${year}/last`);
@@ -430,17 +449,13 @@ app.get("/drivers/graph-data", Cache(30 * 60 * 1000), async (req, res) => {
         var response = await axios.get(`${F1apiURL}/${year}/last`);
     }
 
-    if (cached_drivers_data.round == response.data.MRData.RaceTable.round) {
-        console.log("Returning cached driver graph data")
-        return res.status(200).json(cached_drivers_data)
-    } else {
-        console.log("Updating driver graph data cache")
-        drivers_graph_data(response.data.MRData.RaceTable.round, year);
-        return res.status(200).json(cached_drivers_data)
+    if (current_round != response.data.MRData.RaceTable.round) {
+        var updated_data = await update_drivers_graph_data(response.data.MRData.RaceTable.round, year);
+        await redis.set(key, updated_data);
     }
 })
 
-async function drivers_graph_data(rounds, year) {
+async function update_drivers_graph_data(rounds, year) {
     var responseobj = {
         round: rounds,
         labels: [],
@@ -485,8 +500,7 @@ async function drivers_graph_data(rounds, year) {
             driver.borderDash = [5, 3]
         }
     }
-    cached_drivers_data = responseobj;
-    return;
+    return responseobj;
 }
 
 //10 mins cache for schedule
