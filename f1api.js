@@ -18,6 +18,7 @@ var yearoverwrite = 2026;
 const redis = Redis.fromEnv()
 
 const allowed_origins = [
+    'chrome-extension://ooneceogfcfineejdoljajkmiipdkhcn',
     'chrome-extension://kcnpkcgkeoeaecmalnnhioaoghbmmlcd',
     'chrome-extension://gibolpjfgmianecgomfpkddkgajnnpgb'
 ]
