@@ -13,7 +13,7 @@ var teamcolors = require("./teamcolors")
 
 const app = express()
 const F1apiURL = "https://api.jolpi.ca/ergast/f1"
-var yearoverwrite = null;
+var yearoverwrite = 2026;
 
 const redis = Redis.fromEnv()
 
