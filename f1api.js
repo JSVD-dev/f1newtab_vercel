@@ -1,9 +1,11 @@
 const express = require('express')
-const Cache = require('cache-express')
 const axios = require('axios')
 const cors = require('cors')
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const { Redis } = require('@upstash/redis')
+
+require('dotenv').config()
 
 var trackinfo = require("./trackinfo")
 var weather_icons = require("./icons")
@@ -13,11 +15,38 @@ const app = express()
 const F1apiURL = "https://api.jolpi.ca/ergast/f1"
 var yearoverwrite = null;
 
+const redis = Redis.fromEnv()
+
 const allowed_origins = [
     'chrome-extension://ooneceogfcfineejdoljajkmiipdkhcn',
     'chrome-extension://kcnpkcgkeoeaecmalnnhioaoghbmmlcd',
     'chrome-extension://gibolpjfgmianecgomfpkddkgajnnpgb'
 ]
+
+function Cache(ttlMs) {
+    return async (req, res, next) => {
+        try {
+            const key = `cache:${req.originalUrl}`;
+
+            const cached = await redis.get(key);
+            if (cached) {
+                return res.json(cached);
+            }
+
+            // Capture the JSON response
+            const originalJson = res.json.bind(res);
+            res.json = async (body) => {
+            await redis.set(key, body, { ex: Math.floor(ttlMs / 1000) }); // expire after ttlMs
+            originalJson(body);
+            };    
+
+            next();
+        } catch (err) {
+            console.error("Cache error:", err);
+            next();
+        }
+    };
+}
 
 app.use(express.json())
 app.use(cors({
@@ -87,7 +116,7 @@ app.post("/feedback", lowRateLimit, async (req, res) => {
 
 
 //15 minutes cache for weather
-app.get("/forecast", Cache({timeOut: 15 * 60 * 1000}), async (req, res) => {
+app.get("/forecast", Cache(15 * 60 * 1000), async (req, res) => {
     if (!req.query.lat || !req.query.lon || !req.query.date) {
         return res.status(400).json({"error":"missing query params"})
     }
@@ -147,12 +176,12 @@ app.get("/heartbeat", async (req, res) => {
 })
 
 //30 days cache for track images
-app.get("/track-image/:circuitId", Cache({timeOut: 20 * 24 * 60 * 60 * 1000}), async (req, res) => {
+app.get("/track-image/:circuitId", Cache(20 * 24 * 60 * 60 * 1000), async (req, res) => {
     res.status(200).sendFile(path.join(__dirname, '.', 'tracks', `${req.params.circuitId}.png`))
 })
 
 //30 days cache for track info
-app.get("/track-info/:circuitId", Cache({timeOut: 20 * 24 * 60 * 60 * 1000}), async (req, res) => {
+app.get("/track-info/:circuitId", Cache(20 * 24 * 60 * 60 * 1000), async (req, res) => {
     if (trackinfo[req.params.circuitId]) {
         res.status(200).json(trackinfo[req.params.circuitId])
     } else {
@@ -161,7 +190,7 @@ app.get("/track-info/:circuitId", Cache({timeOut: 20 * 24 * 60 * 60 * 1000}), as
 })
 
 //30 days cache for spolier sessions
-app.get("/spoilersessions", Cache({timeOut: 20 * 24 * 60 * 60 * 1000}), async (req, res) => {
+app.get("/spoilersessions", Cache(20 * 24 * 60 * 60 * 1000), async (req, res) => {
     var year = new Date().getFullYear()
     if (yearoverwrite) {year = yearoverwrite}
 
@@ -184,7 +213,7 @@ app.get("/spoilersessions", Cache({timeOut: 20 * 24 * 60 * 60 * 1000}), async (r
 })
 
 //10 mins cache for constructor standings
-app.get("/constructors", Cache({timeOut: 10 * 60 * 1000}), async (req, res) => {
+app.get("/constructors", Cache(10 * 60 * 1000), async (req, res) => {
     var year = new Date().getFullYear()
     if (yearoverwrite) {year = yearoverwrite}
     var response = await axios.get(`${F1apiURL}/${year}/constructorstandings`);
@@ -203,7 +232,7 @@ app.get("/constructors", Cache({timeOut: 10 * 60 * 1000}), async (req, res) => {
         var lastroundDict = lastroundResponse.data.MRData.StandingsTable.StandingsLists[0].ConstructorStandings.reduce((acc, standing) => {
             acc[standing.Constructor.constructorId] = parseInt(standing.position);
             return acc;
-        }, {});
+          }, {});
     }
 
     for (var i = 0; i < response.data.MRData.StandingsTable.StandingsLists[0].ConstructorStandings.length; i++) {
@@ -240,7 +269,7 @@ app.get("/constructors", Cache({timeOut: 10 * 60 * 1000}), async (req, res) => {
 })
 
 //10 mins cache for driver standings
-app.get("/drivers", Cache({timeOut: 10 * 60 * 1000}), async (req, res) => {
+app.get("/drivers", Cache(10 * 60 * 1000), async (req, res) => {
     var year = new Date().getFullYear()
     if (yearoverwrite) {year = yearoverwrite}
     var response = await axios.get(`${F1apiURL}/${year}/driverstandings`);
@@ -260,7 +289,7 @@ app.get("/drivers", Cache({timeOut: 10 * 60 * 1000}), async (req, res) => {
         var lastroundDict = lastroundResponse.data.MRData.StandingsTable.StandingsLists[0].DriverStandings.reduce((acc, standing) => {
             acc[standing.Driver.driverId] = parseInt(standing.position);
             return acc;
-        }, {});
+          }, {});
     }
 
     for (var i = 0; i < response.data.MRData.StandingsTable.StandingsLists[0].DriverStandings.length; i++) {
@@ -298,7 +327,7 @@ app.get("/drivers", Cache({timeOut: 10 * 60 * 1000}), async (req, res) => {
     res.status(200).json(responseobj)
 })
 
-cached_constructors_data = {
+placeholder_constructors_data = {
     round: 0,
     labels: ["Data loading...", "Data loading...", "Data loading..."],
     datasets: [
@@ -318,7 +347,19 @@ cached_constructors_data = {
 }
 
 //30 mins cache for constructor graph data
-app.get("/constructors/graph-data", Cache({timeOut: 30 * 60 * 1000}), async (req, res) => {
+app.get("/constructors/graph-data", Cache(30 * 60 * 1000), async (req, res) => {
+
+    var key = `storage:/constructors_graph_data`;
+    const cached = await redis.get(key);
+    
+    if (cached) {
+        res.json(cached);
+        var current_round = cached.round;
+    } else {
+        res.json(placeholder_constructors_data);
+        var current_round = 0;
+    }
+    
     var year = new Date().getFullYear()
     if (yearoverwrite) {year = yearoverwrite}
     var response = await axios.get(`${F1apiURL}/${year}/last`);
@@ -328,13 +369,9 @@ app.get("/constructors/graph-data", Cache({timeOut: 30 * 60 * 1000}), async (req
         var response = await axios.get(`${F1apiURL}/${year}/last`);
     }
 
-    if (cached_constructors_data.round == response.data.MRData.RaceTable.round) {
-        console.log("Returning cached constructor graph data")
-        return res.status(200).json(cached_constructors_data)
-    } else {
-        console.log("Updating constructor graph data cache")
-        update_constructors_graph_data(response.data.MRData.RaceTable.round, year);
-        return res.status(200).json(cached_constructors_data)
+    if (current_round != response.data.MRData.RaceTable.round) {
+        var updated_data = await update_constructors_graph_data(response.data.MRData.RaceTable.round, year);
+        await redis.set(key, updated_data);
     }
 })
 
@@ -368,11 +405,10 @@ async function update_constructors_graph_data(rounds, year) {
 
         await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    cached_constructors_data = responseobj;
-    return;
+    return responseobj;
 }
 
-cached_drivers_data = {
+placeholder_drivers_data = {
     round: 0,
     labels: ["Data loading...", "Data loading...", "Data loading..."],
     datasets: [
@@ -392,7 +428,19 @@ cached_drivers_data = {
 }
 
 //30 mins cache for driver graph data
-app.get("/drivers/graph-data", Cache({timeOut: 30 * 60 * 1000}), async (req, res) => {
+app.get("/drivers/graph-data", Cache(0.5 * 60 * 1000), async (req, res) => {
+    
+    var key = `storage:/drivers_graph_data`;
+    const cached = await redis.get(key);
+
+    if (cached) {
+        res.json(cached);
+        var current_round = cached.round;
+    } else {
+        res.json(placeholder_drivers_data);
+        var current_round = 0;
+    }
+    
     var year = new Date().getFullYear()
     if (yearoverwrite) {year = yearoverwrite}
     var response = await axios.get(`${F1apiURL}/${year}/last`);
@@ -402,17 +450,13 @@ app.get("/drivers/graph-data", Cache({timeOut: 30 * 60 * 1000}), async (req, res
         var response = await axios.get(`${F1apiURL}/${year}/last`);
     }
 
-    if (cached_drivers_data.round == response.data.MRData.RaceTable.round) {
-        console.log("Returning cached driver graph data")
-        return res.status(200).json(cached_drivers_data)
-    } else {
-        console.log("Updating driver graph data cache")
-        drivers_graph_data(response.data.MRData.RaceTable.round, year);
-        return res.status(200).json(cached_drivers_data)
+    if (current_round != response.data.MRData.RaceTable.round) {
+        var updated_data = await update_drivers_graph_data(response.data.MRData.RaceTable.round, year);
+        await redis.set(key, updated_data);
     }
 })
 
-async function drivers_graph_data(rounds, year) {
+async function update_drivers_graph_data(rounds, year) {
     var responseobj = {
         round: rounds,
         labels: [],
@@ -457,12 +501,11 @@ async function drivers_graph_data(rounds, year) {
             driver.borderDash = [5, 3]
         }
     }
-    cached_drivers_data = responseobj;
-    return;
+    return responseobj;
 }
 
 //10 mins cache for schedule
-app.get("/schedule", Cache({timeOut: 10 * 60 * 1000}), async (req,res) => {
+app.get("/schedule", Cache(10 * 60 * 1000), async (req,res) => {
     var year = new Date().getFullYear()
     if (yearoverwrite) {year = yearoverwrite}
     var response = await axios.get(`${F1apiURL}/${year}/races`);
@@ -473,9 +516,9 @@ app.get("/schedule", Cache({timeOut: 10 * 60 * 1000}), async (req,res) => {
         var race = response.data.MRData.RaceTable.Races[i]
 
         var racedate = Date.parse(`${race.date} ${race.time}`)
-        // if (racedate < new Date()) {
-        //     continue
-        // }
+        if (racedate < new Date()) {
+            continue
+        }
 
         responseobj.push({
             round: race.round,
@@ -491,7 +534,7 @@ app.get("/schedule", Cache({timeOut: 10 * 60 * 1000}), async (req,res) => {
 })
 
 //10 mins cache for latest
-app.get("/latest", Cache({timeOut: 10 * 60 * 1000}), async (req,res) => {
+app.get("/latest", Cache(10 * 60 * 1000), async (req,res) => {
     var year = new Date().getFullYear()
     if (yearoverwrite) {year = yearoverwrite}
     var response = await axios.get(`${F1apiURL}/${year}/last/results`);
@@ -528,13 +571,13 @@ app.get("/latest", Cache({timeOut: 10 * 60 * 1000}), async (req,res) => {
 });
 
 //10 mins cache for qualifying
-app.get("/qualifying/:round", Cache({timeOut: 10 * 60 * 1000}), async (req,res) => {
+app.get("/qualifying/:round", Cache(10 * 60 * 1000), async (req,res) => {
     var year = new Date().getFullYear()
     if (yearoverwrite) {year = yearoverwrite}
     var response = await axios.get(`${F1apiURL}/${year}/${req.params.round}/qualifying`);
 
     if (response.data.MRData.RaceTable.Races.length == 0) {
-        return res.status(204).json()
+        return res.status(204).json('none')
     }
 
     var responseobj = []
